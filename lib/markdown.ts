@@ -8,7 +8,7 @@ const THEMES = { light: "github-light", dark: "github-dark-default" } as const
 // Every language a fence might be tagged with. Shiki loads grammars eagerly,
 // so this list is the cost — keep it to what the transcript actually uses.
 const LANGS = [
-    "tsx", "typescript", "javascript", "jsx", "json", "css", "html",
+    "tsx", "typescript", "javascript", "js", "jsx", "json", "css", "html",
     "bash", "shell", "diff", "markdown", "python", "sql", "yaml",
 ]
 
@@ -41,7 +41,7 @@ function build(): Promise<MarkdownIt> {
                 return [
                     `<figure class="code">`,
                     `<figcaption class="code-bar">`,
-                    `<span class="code-lang">${esc(lang || "text")}</span>`,
+                    `<span class="code-lang">${esc(lang)}</span>`,
                     `<button class="code-copy" type="button" data-code="${esc(code)}" aria-label="Copy code">Copy</button>`,
                     `</figcaption>`,
                     highlighted,

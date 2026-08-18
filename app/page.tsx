@@ -14,6 +14,7 @@ export default async function Page() {
             speaker: turn.speaker,
             note: turn.note,
             html: await renderMarkdown(turn.body),
+            wide: turn.body.length > 280 || /^#{1,6}\s|```/m.test(turn.body),
         }))
     )
 
@@ -37,7 +38,7 @@ export default async function Page() {
                         {meta.subtitle}
                     </p>
                     <p className="mt-4 text-xs text-muted-foreground/70">
-                        {conversation.length} turns · {meta.date}
+                        {conversation.length} {conversation.length === 1 ? "turn" : "turns"} · {meta.date}
                     </p>
                 </div>
 
