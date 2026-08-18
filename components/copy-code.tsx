@@ -5,17 +5,16 @@ import { useEffect } from "react"
 /**
  * The code blocks are server-rendered HTML strings, so there is no React
  * element to hang an onClick on. One delegated listener covers every block on
- * the page and survives any number of them.
+ * the page.
  */
-export default function CopyCode() {
+export function CopyCode() {
     useEffect(() => {
         function onClick(event: MouseEvent) {
             const target = event.target as HTMLElement | null
             const button = target?.closest?.(".code-copy") as HTMLButtonElement | null
             if (!button) return
 
-            const code = button.dataset.code ?? ""
-            navigator.clipboard.writeText(code).then(
+            navigator.clipboard.writeText(button.dataset.code ?? "").then(
                 () => flash(button, "Copied"),
                 () => flash(button, "Failed")
             )
@@ -23,10 +22,10 @@ export default function CopyCode() {
 
         function flash(button: HTMLButtonElement, label: string) {
             button.textContent = label
-            button.classList.add("is-done")
+            button.dataset.state = "done"
             window.setTimeout(() => {
                 button.textContent = "Copy"
-                button.classList.remove("is-done")
+                delete button.dataset.state
             }, 1400)
         }
 

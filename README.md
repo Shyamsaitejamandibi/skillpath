@@ -45,6 +45,14 @@ import it.
 |---|---|
 | `data/conversation.ts` | the transcript — the only file you edit routinely |
 | `lib/markdown.ts` | markdown-it + Shiki, memoised per process, server-only |
-| `components/Turn.tsx` | one turn; async server component |
-| `components/CopyCode.tsx` | delegated copy-button listener (the only client component) |
-| `app/globals.css` | all styling, including the `.prose` rules for rendered Markdown |
+| `app/page.tsx` | renders the Markdown and lays out the thread (server) |
+| `components/message.tsx` | one turn: my bubble, or Claude's plain text |
+| `components/copy-code.tsx` | delegated copy-button listener |
+| `components/theme-toggle.tsx` | light/dark, via next-themes |
+| `app/globals.css` | tokens plus the `.prose` rules that style rendered Markdown |
+
+Only `copy-code` and `theme-toggle` are client components. Shiki emits both
+palettes as CSS variables per token, so switching theme re-colours the code with
+no re-render and no second copy of the markup.
+
+UI primitives come from shadcn/ui (`components/ui`), on Tailwind v4.

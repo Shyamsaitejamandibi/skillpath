@@ -1,44 +1,52 @@
-import Turn from "@/components/Turn"
-import CopyCode from "@/components/CopyCode"
+import { CopyCode } from "@/components/copy-code"
+import { Message } from "@/components/message"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { conversation, meta } from "@/data/conversation"
+import { renderMarkdown } from "@/lib/markdown"
 
-export default function Page() {
-    const mine = conversation.filter((t) => t.speaker === "me").length
-    const theirs = conversation.length - mine
+/**
+ * Markdown and syntax highlighting run here, on the server, at build time —
+ * the client receives finished HTML and never loads a parser or a grammar.
+ */
+export default async function Page() {
+    const turns = await Promise.all(
+        conversation.map(async (turn) => ({
+            speaker: turn.speaker,
+            note: turn.note,
+            html: await renderMarkdown(turn.body),
+        }))
+    )
 
     return (
-        <main className="page">
+        <div className="min-h-svh">
             <CopyCode />
 
-            <header className="masthead">
-                <p className="eyebrow">Transcript · {meta.date}</p>
-                <h1 className="title">{meta.title}</h1>
-                <p className="subtitle">{meta.subtitle}</p>
-                <dl className="stats">
-                    <div>
-                        <dt>Turns</dt>
-                        <dd>{conversation.length}</dd>
+            <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-md">
+                <div className="mx-auto flex h-13 max-w-3xl items-center gap-3 px-5">
+                    <span className="truncate text-sm font-medium">{meta.title}</span>
+                    <div className="ml-auto">
+                        <ThemeToggle />
                     </div>
-                    <div>
-                        <dt>Mine</dt>
-                        <dd>{mine}</dd>
-                    </div>
-                    <div>
-                        <dt>Claude</dt>
-                        <dd>{theirs}</dd>
-                    </div>
-                </dl>
+                </div>
             </header>
 
-            <div className="thread">
-                {conversation.map((turn, i) => (
-                    <Turn key={i} turn={turn} index={i} />
-                ))}
-            </div>
+            <main className="mx-auto max-w-3xl px-5 pb-32">
+                <div className="border-b py-10">
+                    <h1 className="text-2xl font-semibold tracking-tight">{meta.title}</h1>
+                    <p className="mt-2 text-[15px] text-pretty text-muted-foreground">
+                        {meta.subtitle}
+                    </p>
+                    <p className="mt-4 text-xs text-muted-foreground/70">
+                        {conversation.length} turns · {meta.date}
+                    </p>
+                </div>
 
-            <footer className="footer">
-                <p>Verbatim, in order. Nothing edited out.</p>
-            </footer>
-        </main>
+                <div className="flex flex-col gap-9 pt-10">
+                    {turns.map((turn, i) => (
+                        <Message key={i} turn={turn} index={i} />
+                    ))}
+                </div>
+            </main>
+        </div>
     )
 }
