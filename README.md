@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Skillpath — transcript
 
-## Getting Started
-
-First, run the development server:
+A Next.js app that renders the Skillpath build conversation as a readable, linkable
+transcript. Fully static: the whole page prerenders at build time, and the only
+client-side JavaScript is the copy button on code blocks.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm dev      # http://localhost:3000
+pnpm build    # prerenders to static HTML
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Adding turns
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Everything lives in **`data/conversation.ts`**. Append to the `conversation` array,
+in order:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```ts
+{
+    speaker: "me",          // "me" | "claude"
+    body: `What I typed.`,
+    note: "optional caption under the name",
+}
+```
 
-## Learn More
+`body` is Markdown — headings, lists, tables, links, blockquotes, inline `code`,
+and fenced blocks. Tag fences with a language to get highlighting:
 
-To learn more about Next.js, take a look at the following resources:
+    ```tsx
+    export function Component() {}
+    ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Supported languages are listed in `lib/markdown.ts` (`LANGS`); add to that array
+if you need one that isn't there. An untagged or unknown fence still renders,
+just unhighlighted.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Two gotchas when pasting.** A body inside a backtick template needs its own
+backticks escaped (`` \` ``) and its `${` escaped (`\${`). To skip both, use
+`String.raw` with a different delimiter, or paste the text into a `.md` file and
+import it.
 
-## Deploy on Vercel
+## Layout
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Path | |
+|---|---|
+| `data/conversation.ts` | the transcript — the only file you edit routinely |
+| `lib/markdown.ts` | markdown-it + Shiki, memoised per process, server-only |
+| `components/Turn.tsx` | one turn; async server component |
+| `components/CopyCode.tsx` | delegated copy-button listener (the only client component) |
+| `app/globals.css` | all styling, including the `.prose` rules for rendered Markdown |
