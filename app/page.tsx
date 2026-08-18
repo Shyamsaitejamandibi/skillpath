@@ -40,6 +40,14 @@ export default async function Page() {
                     <p className="mt-4 text-xs text-muted-foreground/70">
                         {conversation.length} {conversation.length === 1 ? "turn" : "turns"} · {meta.date}
                     </p>
+
+                    {/* A left rule rather than another muted box — the turns
+                        below use those, and this is not one of them. */}
+                    {meta.provenance ? (
+                        <p className="mt-7 border-l-2 pl-4 text-sm leading-relaxed text-muted-foreground">
+                            {meta.provenance}
+                        </p>
+                    ) : null}
                 </div>
 
                 <div className="flex flex-col gap-9 pt-10">

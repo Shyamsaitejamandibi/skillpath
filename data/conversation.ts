@@ -28,6 +28,12 @@ export const meta = {
     subtitle: "Building a Framer code component against a deliberately flaky API — the full exchange.",
     /** Shown as-is. Any format you like. */
     date: "August 2026",
+    /**
+     * Why this is a page and not a claude.ai link. Shown once, above the
+     * transcript. Set to an empty string to drop it.
+     */
+    provenance:
+        "This was a Claude session. Team-plan chats can't be shared by link, so instead of a share URL the turns below are the session copy-pasted verbatim — my prompts and Claude's replies, in order, nothing edited out.",
 }
 
 export const conversation: Turn[] = [
@@ -127,5 +133,109 @@ Before you write code, here are facts I verified myself with curl, use these ove
 - \`199900\` pricePaise = ₹1,999. \`3999\` priceUsdCents = $39.99. Both /100.
 
 Give me a plan for a single-file Framer code component: the state model, what happens for each of loading / error / empty / success, and how the two fetches relate to each other. Specifically: what do we render when country-code fails but course-data succeeds? Retry country-code a couple of times; if it still fails, fall back to USD as an explicit documented default, render the grid anyway, and show one quiet line of copy like "Showing prices in USD — couldn't confirm your region." Never block the cards on the country call.`,
+    },
+    {
+        speaker: "claude",
+        note: "the plan, before a line of component code",
+        body: `## The shape of it
+
+Two fetches, fired in parallel on mount, with asymmetric authority: **course-data is blocking, country-code is advisory.** Courses gate the grid; the country call only decides which of two numbers already in hand gets formatted. So it never gets to hold the page hostage.
+
+## State model
+
+Two independent slices, not one merged \`status\`. Merging them is what produces the blank page when one of two calls fails.
+
+\`\`\`js
+// blocking slice
+courses:       Course[] | null
+coursesPhase:  "loading" | "error" | "empty" | "success"
+coursesError:  { status?: number } | null   // never the API's own message
+
+// advisory slice — terminal once resolved
+currencyPhase: "resolving" | "resolved"
+currency:      "INR" | "USD"      // USD is the documented default
+confirmed:     boolean            // false = we fell back
+
+// UI-only
+query, sort, reloadKey
+\`\`\`
+
+Plus refs: \`abortRef\` (per attempt), \`runIdRef\` (discard stale responses after a retry or prop change), \`currencyResolvedRef\` (so a late country response can't flip a committed decision).
+
+## How the two fetches relate
+
+\`currencyPhase\` resolves in one of three ways, and it's **terminal** — no post-hoc price swapping, because a card that shows $39.99 and then flips to ₹1,999 looks broken in a way that a fallback line doesn't.
+
+1. **Country succeeds** (up to 3 attempts, 400ms/1200ms backoff, retried on failure, not on a clock) → resolved, \`confirmed: true\`.
+2. **All 3 attempts fail** → resolved as USD, \`confirmed: false\`.
+3. **Courses land first, country still in flight** → start a 2500ms warm window; on expiry, abort country and commit USD fallback.
+
+That warm window is short on purpose. Both endpoints share the host, so once courses have arrived the Render instance is demonstrably awake — the cold-start excuse no longer applies to the country call, and anything still pending after 2.5s on a warm host is failing rather than booting. The generous 60s timeout only applies before that point.
+
+Cards render as soon as courses land. While \`currencyPhase === "resolving"\`, the card's price slot alone shows a small shimmer — name, category, description are all live. So nothing is ever blocked on the country call, and the fallback line can only appear after the decision is final, never mid-flight.
+
+## The 404/500 trap
+
+Every fetch goes through one helper, in this order:
+
+\`\`\`js
+const res = await fetch(url, { signal })      // no method, no headers
+if (!res.ok) throw new HttpError(res.status)  // BEFORE touching the body
+const data = await res.json()
+\`\`\`
+
+\`{"detail":"maybe turn it on and off?"}\` parses cleanly, so \`res.ok\` is the only thing standing between that and a \`.map()\` over a string. Then shape validation on top, because a 200 doesn't guarantee the payload: courses must be \`Array.isArray\`, country must be exactly \`"IN"\` or \`"US"\` — anything else is treated as a failed attempt, not as data.
+
+No \`method\`, no \`Content-Type\`. Adding that header makes the request non-simple, triggers an \`OPTIONS\` preflight, and earns a 405 — which is probably the trap behind that rule.
+
+**Auto-retry courses twice** before surfacing an error. At a 1/3 base failure rate that takes visible failure from ~33% to ~3.7%. It's the single highest-leverage thing in the whole component.
+
+## The four states
+
+**Loading** — skeleton cards in the real grid, not a spinner, so there's no layout jump. After 8s, a quiet line: "Still waking up the server." Cold starts otherwise read as dead.
+
+**Error** — a card-shaped panel with our own copy plus the status code in small muted text, and a Retry button that bumps \`reloadKey\`. The API's \`detail\` string never reaches the screen; it would look like a crash.
+
+**Empty** — \`Array.isArray(data) && validItems.length === 0\`. Distinct from error, distinct copy, Refresh button. Items are normalized first and ones missing \`courseName\` are dropped, so a partially garbage payload degrades to fewer cards rather than a broken one.
+
+**Success** — the grid, plus the fallback line above it when \`!confirmed\`.
+
+There's a third zero-state worth separating: search filters everything out while courses exist. That's "No matches for *react*" + Clear, not "No courses available."
+
+## Cards
+
+Extra field: **\`mainCategory\`**, as a small pill above the title. It's the only field a learner scans a grid with — \`mangoId\` and \`courseCode\` are internal plumbing, \`courseType: "Original"\` is platform jargon, and \`shortCourse\` is a truncation of a name they already have. \`refundable\` earns its own conditional badge (bonus), shown only when true.
+
+Price: divide by 100, always. \`Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" })\` with zero fraction digits when the amount is whole → ₹1,999. \`en-US\`/USD keeps two → $39.99. Non-numeric or missing price renders "Price unavailable" and keeps the card; 0 renders "Free". Nothing raw ever hits the DOM.
+
+Description gets a 2-line \`-webkit-line-clamp\`, and the price row is pinned with \`marginTop: auto\` in a flex column so short descriptions don't leave prices at different heights.
+
+## Grid
+
+**ResizeObserver on the component's own container**, not viewport media queries — Framer renders this at arbitrary canvas widths, and container-driven columns behave correctly in all of them. \`<560px → 1\`, \`560–899 → 2\`, \`≥900 → 3\`. \`justify-content: start\` with \`height: 100%\` cards so a trailing row of 1 or 2 doesn't stretch or center oddly. Nothing in the layout knows how many cards there are.
+
+## Property controls
+
+- **\`accentColor\`** (\`ControlType.Color\`) — drives the pill, price, badge, retry button. The first thing a designer asks for.
+- **\`defaultSort\`** (\`ControlType.Enum\`: Featured / Price: Low to High / Price: High to Low) — changes what a visitor sees first, and there's no other way to reach it from the canvas.
+
+Both are cheap to extend later (\`sectionTitle\`, \`showSearch\`, \`cardRadius\`), but those two are the ones that are actually load-bearing.
+
+---
+
+Want me to write it? I'd build it in one pass with the bonuses included — search, sort, skeletons, retry, and the refundable badge all fall out of this structure at near-zero extra cost.`,
+    },
+    {
+        speaker: "me",
+        note: "five corrections to the plan",
+        body: `Go ahead, but make these adjustments before writing the code:
+
+1. Remove the 2.5s country-code cutoff. Let the country request complete through its retry attempts; never block the course grid on it. If all attempts fail, commit to the documented USD fallback.
+2. Keep course-data failure visible rather than silently retrying indefinitely. Show the error state with a Retry button.
+3. Keep the implementation focused on the assignment requirements. Don't over-engineer hypothetical malformed API responses.
+4. Implement the core requirements first and then add search, sorting, skeleton loaders, retry, and the conditional refundable badge only if they don't compromise the core UX.
+5. Keep everything in a single Framer React code component as requested.
+
+Before finalizing, verify every requirement from my original prompt against the implementation, especially \`res.ok\`, GET-only requests, 20–60s Render cold starts, variable course counts, currency fallback behavior, responsive 3/2/1 layout, and exactly two Framer property controls.`,
     },
 ]
